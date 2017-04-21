@@ -72,7 +72,7 @@ public:
 		    string vfmt, char fmtLetter);
 
     void emitVarDecl(AstVar* nodep, const string& prefixIfImp);
-	void emitSignalMapEntry(AstVar* varp, const string& prefixIfImp);
+	void emitSignalMapEntry(AstVar* varp, const string& type, const string& prefixIfImp);
 	void emitSignalMaps(AstNode* firstp, const string& prefixIfImp);
     typedef enum {EVL_IO, EVL_SIG, EVL_TEMP, EVL_PAR, EVL_ALL} EisWhich;
     void emitVarList(AstNode* firstp, EisWhich which, const string& prefixIfImp);
@@ -1039,19 +1039,21 @@ void EmitCStmts::emitVarDecl(AstVar* nodep, const string& prefixIfImp) {
     }
 }
 
-void EmitCStmts::emitSignalMapEntry(AstVar* varp, const string& prefixIfImp) {
-	puts("\t{\"");
+void EmitCStmts::emitSignalMapEntry(AstVar* varp, const string& type, const string& prefixIfImp) {
+	puts("{\"");
 	puts(varp->name());
 	puts("\", ");
 	if (prefixIfImp!="") { puts(prefixIfImp); puts("::"); }
+	puts("static_cast<");
+	puts(type);
+	puts(">(");
 	puts(varp->name());
-	puts("},\n");
+	puts(")},\n");
 }
 
 void EmitCStmts::emitSignalMaps(AstNode* firstp, const string& prefixIfImp) {
-
 	auto is_signal = [](AstVar* varp) {
-		return varp->isSignal() && !varp->isStatic() && !varp->dtypeSkipRefp()->castUnpackArrayDType();
+		return /*varp->isSignal() &&*/ !varp->isStatic() && !varp->dtypeSkipRefp()->castUnpackArrayDType();
 	};
 
 	puts("const std::unordered_map<std::string, CData&> signals8{\n");
@@ -1066,8 +1068,8 @@ void EmitCStmts::emitSignalMaps(AstNode* firstp, const string& prefixIfImp) {
 	puts("const std::unordered_map<std::string, SData&> signals16{\n");
 	for (AstNode* nodep=firstp; nodep; nodep = nodep->nextp()) {
 		if (AstVar* varp = nodep->castVar()) {
-			if (!varp->isStatic() && varp->widthMin() <= 16 && varp->widthMin() > 8) {
-				emitSignalMapEntry(varp, prefixIfImp);
+			if (is_signal(varp) && varp->widthMin() <= 16 && varp->widthMin() > 8) {
+				emitSignalMapEntry(varp, "SData&", prefixIfImp);
 			}
 		}
 	}
@@ -1075,8 +1077,8 @@ void EmitCStmts::emitSignalMaps(AstNode* firstp, const string& prefixIfImp) {
 	puts("const std::unordered_map<std::string, IData&> signals32{\n");
 	for (AstNode* nodep=firstp; nodep; nodep = nodep->nextp()) {
 		if (AstVar* varp = nodep->castVar()) {
-			if (!varp->isStatic() && varp->widthMin() <= 32 && varp->widthMin() > 16) {
-				emitSignalMapEntry(varp, prefixIfImp);
+			if (is_signal(varp) && varp->widthMin() <= 32 && varp->widthMin() > 16) {
+				emitSignalMapEntry(varp, "IData&", prefixIfImp);
 			}
 		}
 	}
@@ -1084,8 +1086,8 @@ void EmitCStmts::emitSignalMaps(AstNode* firstp, const string& prefixIfImp) {
 	puts("const std::unordered_map<std::string, QData&> signals64{\n");
 	for (AstNode* nodep=firstp; nodep; nodep = nodep->nextp()) {
 		if (AstVar* varp = nodep->castVar()) {
-			if (!varp->isStatic() && varp->isQuad()) {
-				emitSignalMapEntry(varp, prefixIfImp);
+			if (is_signal(varp) && varp->isQuad()) {
+				emitSignalMapEntry(varp, "QData&", prefixIfImp);
 			}
 		}
 	}
@@ -1954,11 +1956,11 @@ void EmitCImp::emitInt(AstNodeModule* modp) {
     if (modp->isTop()) puts("// The application code writes and reads these signals to\n");
     if (modp->isTop()) puts("// propagate new values into/out from the Verilated model.\n");
     emitVarList(modp->stmtsp(), EVL_IO, "");
-	emitSignalMaps(modp->stmtsp(), "");
 
     puts("\n// LOCAL SIGNALS\n");
     if (modp->isTop()) puts("// Internals; generally not touched by application code\n");
     emitVarList(modp->stmtsp(), EVL_SIG, "");
+    emitSignalMaps(modp->stmtsp(), "");
 
     puts("\n// LOCAL VARIABLES\n");
     if (modp->isTop()) puts("// Internals; generally not touched by application code\n");
